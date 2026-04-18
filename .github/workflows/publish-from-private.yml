@@ -1,8 +1,8 @@
-name: Publish From Private
+name: Release Distribution
 
 on:
   repository_dispatch:
-    types: [flicksy_release_ready]
+    types: [release_publish_requested]
   workflow_dispatch:
     inputs:
       sourceRepo:
