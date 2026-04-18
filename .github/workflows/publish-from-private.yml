@@ -1,0 +1,214 @@
+name: Publish From Private
+
+on:
+  repository_dispatch:
+    types: [flicksy_release_ready]
+  workflow_dispatch:
+    inputs:
+      sourceRepo:
+        description: "Private source repo (owner/name)"
+        required: true
+        default: "freak-head/flicksy-android"
+      sourceRef:
+        description: "Git ref in private source"
+        required: true
+        default: "refs/heads/release"
+      versionName:
+        description: "Version name (e.g. 1.0.2)"
+        required: true
+      versionCode:
+        description: "Version code"
+        required: true
+      tag:
+        description: "Release tag (e.g. v1.0.2)"
+        required: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v6
+
+      - name: Resolve payload
+        id: payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            source_repo='${{ github.event.client_payload.sourceRepo }}'
+            source_ref='${{ github.event.client_payload.sourceRef }}'
+            version_name='${{ github.event.client_payload.versionName }}'
+            version_code='${{ github.event.client_payload.versionCode }}'
+            tag='${{ github.event.client_payload.tag }}'
+          else
+            source_repo='${{ inputs.sourceRepo }}'
+            source_ref='${{ inputs.sourceRef }}'
+            version_name='${{ inputs.versionName }}'
+            version_code='${{ inputs.versionCode }}'
+            tag='${{ inputs.tag }}'
+          fi
+
+          [[ -n "$source_repo" && -n "$source_ref" && -n "$version_name" && -n "$version_code" && -n "$tag" ]]
+          [[ "$source_ref" == "refs/heads/release" || "$source_ref" == refs/tags/* ]]
+          [[ "$version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$version_code" =~ ^[0-9]+$ ]]
+          [[ "$tag" == v* ]]
+
+          echo "source_repo=$source_repo" >> "$GITHUB_OUTPUT"
+          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout private source repo
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.payload.outputs.source_repo }}
+          ref: ${{ steps.payload.outputs.source_ref }}
+          token: ${{ secrets.PRIVATE_SOURCE_READ_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+
+      - name: Validate public repo cleanliness
+        shell: bash
+        run: |
+          set -euo pipefail
+          blocked=(app core data setup settings modes player)
+          for d in "${blocked[@]}"; do
+            if [[ -d "$d" ]]; then
+              echo "Blocked source directory found in public repo root: $d"
+              exit 1
+            fi
+          done
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Decode signing keystore
+        uses: timheuer/base64-to-file@v1
+        id: signing_keystore
+        with:
+          fileName: flicksy-release.jks
+          encodedString: ${{ secrets.FLICKSY_KEYSTORE_BASE64 }}
+
+      - name: Build signed release APKs from private source
+        working-directory: private-source
+        shell: bash
+        env:
+          FLICKSY_VERSION_NAME: ${{ steps.payload.outputs.version_name }}
+          FLICKSY_VERSION_CODE: ${{ steps.payload.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          ./gradlew \
+            :app:phone:assembleLibreRelease \
+            :app:tv:assembleLibreRelease \
+            -Pandroid.injected.signing.store.file='${{ steps.signing_keystore.outputs.filePath }}' \
+            -Pandroid.injected.signing.store.password='${{ secrets.FLICKSY_KEYSTORE_PASSWORD }}' \
+            -Pandroid.injected.signing.key.alias='${{ secrets.FLICKSY_KEY_ALIAS }}' \
+            -Pandroid.injected.signing.key.password='${{ secrets.FLICKSY_KEY_PASSWORD }}'
+
+      - name: Collect and rename artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          phone_src='private-source/app/phone/build/outputs/apk/libre/release'
+          for f in "$phone_src"/phone-libre-*-release*.apk; do
+            [ -f "$f" ] || continue
+            base="$(basename "$f")"
+            arch="${base#phone-libre-}"
+            arch="${arch%-release.apk}"
+            arch="${arch%-release-unsigned.apk}"
+            cp "$f" "dist/flicksy-phone-${{ steps.payload.outputs.version_name }}-libre-${arch}.apk"
+          done
+
+          tv_src='private-source/app/tv/build/outputs/apk/libre/release'
+          for f in "$tv_src"/tv-libre-*-release*.apk; do
+            [ -f "$f" ] || continue
+            base="$(basename "$f")"
+            arch="${base#tv-libre-}"
+            arch="${arch%-release.apk}"
+            arch="${arch%-release-unsigned.apk}"
+            cp "$f" "dist/flicksy-tv-${{ steps.payload.outputs.version_name }}-libre-${arch}.apk"
+          done
+
+          count=$(find dist -maxdepth 1 -name '*.apk' | wc -l | tr -d ' ')
+          if [[ "$count" -lt 2 ]]; then
+            echo "Expected phone + tv artifacts, found: $count"
+            exit 1
+          fi
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.payload.outputs.tag }}
+          draft: false
+          generate_release_notes: true
+          files: |
+            dist/*.apk
+            dist/SHA256SUMS.txt
+
+      - name: Update manifest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          released_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          notes_url="https://github.com/${{ github.repository }}/releases/tag/${{ steps.payload.outputs.tag }}"
+
+          artifacts_json="$(for f in dist/*.apk; do \
+            name="$(basename "$f")"; \
+            sha="$(sha256sum "$f" | awk '{print $1}')"; \
+            url="https://github.com/${{ github.repository }}/releases/download/${{ steps.payload.outputs.tag }}/${name}"; \
+            jq -nc --arg name "$name" --arg url "$url" --arg sha "$sha" '{name:$name,url:$url,sha256:$sha}'; \
+          done | jq -s '.')"
+
+          tmp_manifest="$(mktemp)"
+          jq \
+            --arg channel "stable" \
+            --arg versionName "${{ steps.payload.outputs.version_name }}" \
+            --argjson versionCode "${{ steps.payload.outputs.version_code }}" \
+            --arg releasedAt "$released_at" \
+            --arg notesUrl "$notes_url" \
+            --argjson artifacts "$artifacts_json" \
+            --argjson minSupportedVersionCode 1 \
+            '.channel=$channel
+             | .latestVersionName=$versionName
+             | .latestVersionCode=$versionCode
+             | .releasedAt=$releasedAt
+             | .artifacts=$artifacts
+             | .notesUrl=$notesUrl
+             | .minSupportedVersionCode=$minSupportedVersionCode' \
+            manifest.json > "$tmp_manifest"
+          mv "$tmp_manifest" manifest.json
+
+      - name: Commit manifest update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git diff --staged --quiet && exit 0
+          git commit -m "release: ${{ steps.payload.outputs.version_name }}"
+          git push
