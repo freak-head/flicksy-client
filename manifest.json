@@ -1,9 +1,50 @@
 {
   "channel": "stable",
-  "latestVersionName": "",
-  "latestVersionCode": 0,
-  "releasedAt": "",
-  "artifacts": [],
-  "notesUrl": "",
-  "minSupportedVersionCode": 0
+  "latestVersionName": "1.0.2",
+  "latestVersionCode": 32,
+  "releasedAt": "2026-04-18T10:40:02Z",
+  "artifacts": [
+    {
+      "name": "flicksy-phone-1.0.2-libre-arm64-v8a.apk",
+      "url": "https://github.com/freak-head/flicksy-client/releases/download/v1.0.2/flicksy-phone-1.0.2-libre-arm64-v8a.apk",
+      "sha256": "77891dcbeda2f0dff71012db33e9a7527087bade216c6c4f8c1a35e35783e82a"
+    },
+    {
+      "name": "flicksy-phone-1.0.2-libre-armeabi-v7a.apk",
+      "url": "https://github.com/freak-head/flicksy-client/releases/download/v1.0.2/flicksy-phone-1.0.2-libre-armeabi-v7a.apk",
+      "sha256": "2e908bc078c4e40b544b8c9d891b94ab89213fd8cbaf7d3c124ab8247e28d428"
+    },
+    {
+      "name": "flicksy-phone-1.0.2-libre-x86.apk",
+      "url": "https://github.com/freak-head/flicksy-client/releases/download/v1.0.2/flicksy-phone-1.0.2-libre-x86.apk",
+      "sha256": "26704b49543a044e79198e709a8772b53ad407b509218f545984f0a444a7c9cd"
+    },
+    {
+      "name": "flicksy-phone-1.0.2-libre-x86_64.apk",
+      "url": "https://github.com/freak-head/flicksy-client/releases/download/v1.0.2/flicksy-phone-1.0.2-libre-x86_64.apk",
+      "sha256": "52a14561d4034449a3a6b52f6bf746c9a6bb593d6a4f9fd581799bc2c9542e3e"
+    },
+    {
+      "name": "flicksy-tv-1.0.2-libre-arm64-v8a.apk",
+      "url": "https://github.com/freak-head/flicksy-client/releases/download/v1.0.2/flicksy-tv-1.0.2-libre-arm64-v8a.apk",
+      "sha256": "1c9a56780175f2ceb3d1616e741f06996c4d88eb4cd84cf2692cc2f1ff3ff27a"
+    },
+    {
+      "name": "flicksy-tv-1.0.2-libre-armeabi-v7a.apk",
+      "url": "https://github.com/freak-head/flicksy-client/releases/download/v1.0.2/flicksy-tv-1.0.2-libre-armeabi-v7a.apk",
+      "sha256": "75d1d5ded6537a7eea3c0a2d9be181c11cf3c578c343a0a3a6be8726ea499d4e"
+    },
+    {
+      "name": "flicksy-tv-1.0.2-libre-x86.apk",
+      "url": "https://github.com/freak-head/flicksy-client/releases/download/v1.0.2/flicksy-tv-1.0.2-libre-x86.apk",
+      "sha256": "f314af53731268d1e4d834a078336548a86e3c2d713034f63b38ba61d9a8ca68"
+    },
+    {
+      "name": "flicksy-tv-1.0.2-libre-x86_64.apk",
+      "url": "https://github.com/freak-head/flicksy-client/releases/download/v1.0.2/flicksy-tv-1.0.2-libre-x86_64.apk",
+      "sha256": "4dd420d08a4cb0bff738041326af6de85d11aeb6eebc43d875bd7c959a9f9179"
+    }
+  ],
+  "notesUrl": "https://github.com/freak-head/flicksy-client/releases/tag/v1.0.2",
+  "minSupportedVersionCode": 1
 }
