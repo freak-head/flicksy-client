@@ -116,10 +116,35 @@ jobs:
           ./gradlew \
             :app:phone:assembleLibreRelease \
             :app:tv:assembleLibreRelease \
+            -Dflicksy.version.name='${{ steps.payload.outputs.version_name }}' \
+            -Dflicksy.version.code='${{ steps.payload.outputs.version_code }}' \
             -Pandroid.injected.signing.store.file='${{ steps.signing_keystore.outputs.filePath }}' \
             -Pandroid.injected.signing.store.password='${{ secrets.FLICKSY_KEYSTORE_PASSWORD }}' \
             -Pandroid.injected.signing.key.alias='${{ secrets.FLICKSY_KEY_ALIAS }}' \
             -Pandroid.injected.signing.key.password='${{ secrets.FLICKSY_KEY_PASSWORD }}'
+
+      - name: Verify built APK metadata matches release payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_name='${{ steps.payload.outputs.version_name }}'
+          expected_code='${{ steps.payload.outputs.version_code }}'
+
+          check_metadata() {
+            local file="$1"
+            [ -f "$file" ] || { echo "Missing metadata file: $file"; exit 1; }
+            jq -e --arg n "$expected_name" --argjson c "$expected_code" '
+              (.elements | length) > 0 and
+              ([.elements[] | select(.versionName == $n and .versionCode == $c)] | length) == (.elements | length)
+            ' "$file" >/dev/null || {
+              echo "Version metadata mismatch in $file"
+              cat "$file"
+              exit 1
+            }
+          }
+
+          check_metadata "private-source/app/phone/build/outputs/apk/libre/release/output-metadata.json"
+          check_metadata "private-source/app/tv/build/outputs/apk/libre/release/output-metadata.json"
 
       - name: Collect and rename artifacts
         shell: bash
