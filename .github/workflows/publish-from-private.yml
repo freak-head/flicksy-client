@@ -234,6 +234,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add manifest.json
-          git diff --staged --quiet && exit 0
+          git diff --staged --quiet && { echo "manifest.json unchanged"; exit 0; }
           git commit -m "release: ${{ steps.payload.outputs.version_name }}"
-          git push
+
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo "Manifest commit pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "Push race detected on attempt $attempt, retrying..."
+            sleep 2
+          done
+          echo "Failed to push manifest commit after retries."
+          exit 1
