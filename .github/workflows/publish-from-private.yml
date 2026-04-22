@@ -42,9 +42,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          default_source_repo="freak-head/flicksy-android"
+          default_source_ref="refs/heads/release"
           if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
-            source_repo='${{ github.event.client_payload.sourceRepo }}'
-            source_ref='${{ github.event.client_payload.sourceRef }}'
+            # Keep dispatch payload minimal; source location is controlled here.
+            source_repo="$default_source_repo"
+            source_ref="$default_source_ref"
             version_name='${{ github.event.client_payload.versionName }}'
             version_code='${{ github.event.client_payload.versionCode }}'
             tag='${{ github.event.client_payload.tag }}'
@@ -233,17 +236,36 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add manifest.json
-          git diff --staged --quiet && { echo "manifest.json unchanged"; exit 0; }
-          git commit -m "release: ${{ steps.payload.outputs.version_name }}"
+          manifest_snapshot="$(mktemp)"
+          cp manifest.json "$manifest_snapshot"
 
           for attempt in 1 2 3 4 5; do
-            if git pull --rebase origin main && git push origin HEAD:main; then
+            # Ensure each retry starts clean, then replay manifest on latest origin/main.
+            git rebase --abort >/dev/null 2>&1 || true
+            git merge --abort >/dev/null 2>&1 || true
+
+            git fetch origin main
+            git checkout -B ci/manifest-publish origin/main
+
+            cp "$manifest_snapshot" manifest.json
+            git add manifest.json
+
+            if git diff --staged --quiet; then
+              echo "manifest.json already up to date on origin/main"
+              rm -f "$manifest_snapshot"
+              exit 0
+            fi
+
+            git commit -m "release: ${{ steps.payload.outputs.version_name }}"
+
+            if git push origin HEAD:main; then
               echo "Manifest commit pushed on attempt $attempt"
+              rm -f "$manifest_snapshot"
               exit 0
             fi
             echo "Push race detected on attempt $attempt, retrying..."
             sleep 2
           done
+          rm -f "$manifest_snapshot"
           echo "Failed to push manifest commit after retries."
           exit 1
